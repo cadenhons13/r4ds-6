@@ -72,8 +72,24 @@ hourly_avg <- dbplyr_resp |>
   summarize(total_minutes = sum(duration_min, na.rm = TRUE), .groups = "drop") |>
   group_by(sex, major_name, hour) |>
   summarize(mean_minutes = mean(total_minutes, na.rm = TRUE), .groups = "drop")
+```
 
-hourly_avg
+```{r}
+#| fig-width: 10
+#| fig-height: 7
+hourly_avg |>
+  ggplot(aes(x = hour, y = mean_minutes, color = sex)) +
+  geom_line(linewidth = 1) +
+  facet_wrap(vars(major_name), scales = "free_y") +
+  scale_x_continuous(breaks = seq(6, 23, 2)) +
+  labs(
+    title = "Hourly Time Use for Weekday Non-employed Respondents",
+    subtitle = "Mean minutes spent in selected activities starting during each hour",
+    x = "Hour of day",
+    y = "Average minutes",
+    color = "Sex",
+    caption = "Source: American Time Use Survey data, stored in data/atus.duckdb"
+  )
 ```
 
 ```{r}
