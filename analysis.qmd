@@ -12,3 +12,90 @@ library(DBI)
 library(duckdb)
 library(dbplyr)
 ```
+
+```{r}
+con <- dbConnect(
+  duckdb(),
+  dbdir = "data/atus.duckdb",
+  read_only = TRUE
+)
+
+dbplyr_act <- tbl(con, "activities")
+dbplyr_resp <- tbl(con, "respondents")
+dbplyr_codes <- tbl(con, "activity_codes")
+```
+
+```{r}
+#| cache: true
+activity_avg <- dbplyr_resp |>
+  filter(
+    day_type == "Weekday",
+    employment_status == "Not in labor force"
+  ) |>
+  select(tucaseid, sex) |>
+  inner_join(dbplyr_act, by = "tucaseid") |>
+  inner_join(
+    select(dbplyr_codes, activity_code, major_name),
+    by = "activity_code"
+  ) |>
+  group_by(tucaseid, sex, major_name) |>
+  summarize(total_minutes = sum(duration_min, na.rm = TRUE), .groups = "drop") |>
+  collect() |>
+  group_by(sex, major_name) |>
+  summarize(mean_minutes = mean(total_minutes, na.rm = TRUE), .groups = "drop")
+```
+
+```{r}
+selected_categories <- c(
+  "Personal Care Activities",
+  "Household Activities",
+  "Work & Work-Related Activities",
+  "Socializing, Relaxing, and Leisure"
+)
+
+hourly_avg <- dbplyr_resp |>
+  filter(
+    day_type == "Weekday",
+    employment_status == "Not in labor force"
+  ) |>
+  select(tucaseid, sex) |>
+  inner_join(dbplyr_act, by = "tucaseid") |>
+  inner_join(
+    select(dbplyr_codes, activity_code, major_name),
+    by = "activity_code"
+  ) |>
+  filter(major_name %in% selected_categories) |>
+  collect() |>
+  mutate(hour = floor(start_hhmm / 100)) |>
+  filter(hour >= 6, hour <= 23) |>
+  group_by(tucaseid, sex, major_name, hour) |>
+  summarize(total_minutes = sum(duration_min, na.rm = TRUE), .groups = "drop") |>
+  group_by(sex, major_name, hour) |>
+  summarize(mean_minutes = mean(total_minutes, na.rm = TRUE), .groups = "drop")
+
+hourly_avg
+```
+
+```{r}
+#| fig-width: 10
+#| fig-height: 7
+activity_avg |>
+  filter(major_name != "Data Codes") |>
+  mutate(major_name = fct_reorder2(
+    major_name,
+    mean_minutes,
+    sex,
+    .fun = function(x, y) mean(x)
+  )) |>
+  ggplot(aes(x = major_name, y = mean_minutes, fill = sex)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  coord_flip() +
+  labs(
+    title = "Daily Time Use by Major Activity",
+    subtitle = "Mean weekday minutes for respondents not in the labor force",
+    x = "Major activity category",
+    y = "Average minutes per diary day",
+    fill = "Sex",
+    caption = "Source: American Time Use Survey data, stored in data/atus.duckdb"
+  )
+```
